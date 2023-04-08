@@ -1,210 +1,85 @@
-import argparse
-import datetime
-import json
-import os
-import git
+# 从给定的目录，递归加载所有的jsonl文件，作为原始文件名，循环执行下面的程序
+# 1.使用python调用执行s1.py 参数是原始文件名 和 s1_原始文件名
+# 2.判断如果执行成功，继续
+# 3.使用python调用执行s2.py 参数是s1_原始文件名 和 s1_原始文件名.txt
+# 4.判断如果执行成功，继续
+# 5.读取s1_原始文件名.txt，逐行遍历每行作为参数 使用python调用执行 s3.py
 
 
-def get_file_language(file_extension):
-    """
-    获取文件扩展名对应的语言类型
+import os,sys
+import subprocess
+from tqdm.auto import tqdm
 
-    Args:
-        file_extension: 文件扩展名
-
-    Returns:
-        文件扩展名对应的语言类型
-    """
-    file_ext = {
-        '.py': 'Python',
-        '.js': 'JavaScript',
-        '.c': 'C',
-        '.cpp': 'C++',
-        '.java': 'Java',
-        '.rb': 'Ruby',
-        '.pl': 'Perl',
-        '.php': 'PHP',
-        '.html': 'HTML',
-        '.css': 'CSS',
-        '.xml': 'XML',
-        '.json': 'JSON',
-        '.txt': 'Text',
-        '.md': 'Markdown',
-        '.sh': 'Shell',
-        '.ps1': 'PowerShell',
-        '.bat': 'Batch',
-        '.swift': 'Swift',
-        '.go': 'Go',
-        '.r': 'R',
-        '.sql': 'SQL',
-        '.lua': 'Lua',
-        '.dart': 'Dart',
-        '.kt': 'Kotlin',
-        '.scala': 'Scala',
-        '.m': 'Objective-C',
-        '.h': 'C/C++ Header',
-        '.hpp': 'C++ Header',
-        '.cs': 'C#',
-        '.vb': 'Visual Basic',
-        '.fs': 'F#',
-        '.jl': 'Julia',
-        '.coffee': 'CoffeeScript',
-        '.ts': 'TypeScript',
-        '.jsx': 'React JSX',
-        '.tsx': 'React TypeScript',
-        '.vue': 'Vue.js',
-        '.rs': 'Rust',
-        '.hs': 'Haskell',
-        '.erl': 'Erlang',
-        '.clj': 'Clojure',
-        '.groovy': 'Groovy',
-        '.d': 'D',
-        '.asm': 'Assembly',
-        '.swift': 'Swift'
-    }
-
-    if file_extension.lower() in file_ext:
-        return file_ext[file_extension.lower()]
-    else:
-        return 'Unknown'
-
-
-def clone_or_pull_repo(repo_url):
-    """
-    克隆或拉取仓库
-
-    Args:
-        repo_url: 仓库URL
-
-    Returns:
-        仓库对象
-    """
-    # 获取仓库名称
-    repo_folder = os.path.basename(repo_url).rstrip('.git')
-
-    if os.path.isdir(repo_folder):
-        # 如果本地已经存在仓库，则执行pull操作
-        repo = git.Repo(repo_folder)
-        repo.remotes.origin.pull()
-    else:
-        # 如果本地不存在仓库，则执行clone操作
-        repo = git.Repo.clone_from(repo_url, repo_folder)
-
-    return repo
-
-
-def get_commits_in_range(repo, start_time, end_time):
-    """
-    获取指定时间范围内的commit
-
-    Args:
-        repo: 仓库对象
-        start_time: 开始时间
-        end_time: 结束时间
-
-    Returns:
-        指定时间范围内的commit列表
-    """
-    commits = list(repo.iter_commits(since=start_time, until=end_time))
-    return commits
-
-
-def get_diff_content(diff):
-    """
-    获取diff中的修改内容
-
-    Args:
-        diff: diff对象
-
-    Returns:
-        diff中的修改内容、添加行数、删除行数和文件扩展名
-    """
-    diff_a_blob = diff.a_blob
-    diff_b_blob = diff.b_blob
-
-    if diff_a_blob is None or diff_a_blob.size > 1048576:
+def run_s1(input_file):
+    output_file = f"{input_file}.s1"
+    try:
+        subprocess.check_call([sys.executable, "s1_repo_jsonl_lite.py", input_file, output_file])
+        return output_file
+    except subprocess.CalledProcessError:
+        print(f"ERROR: s1.py failed to execute on {input_file}", file=sys.stderr)
         return None
 
-    if diff_b_blob is None or diff_b_blob.size > 1048576:
+def run_s2(input_file):
+    output_file = f"{input_file}.s2"
+    try:
+        subprocess.check_call([sys.executable, "s2_repo_filter.py", input_file, output_file])
+        return output_file
+    except subprocess.CalledProcessError:
+        print(f"ERROR: s2.py failed to execute on {input_file}", file=sys.stderr)
         return None
 
-    # 将diff内容解码为字符串
-    diff_str = diff.diff.decode('utf-8', 'ignore')
+def run_s3(line):
+    try:
+        subprocess.check_call([sys.executable, "s3_repo_clone.py",line,"--diff_filename","mnbvc_git_diff_commit.jsonl"])
+    except subprocess.CalledProcessError:
+        print(f"ERROR: s3.py failed to execute on {line}", file=sys.stderr)
 
-    # 统计添加和删除的行数
-    added_lines = 0
-    deleted_lines = 0
-    for line in diff_str.splitlines():
-        if line.startswith('+'):
-            added_lines += 1
-        elif line.startswith('-'):
-            deleted_lines += 1
+def proc_one_file(file_path):
+        # 运行s1.py
+        s1_output_file = run_s1(file_path)
+        if not s1_output_file:
+            return
 
-    # 获取文件扩展名
-    path = diff.a_path if diff.a_path else diff.b_path
-    ext = os.path.splitext(path)[1]
+        # 运行s2.py
+        s2_output_file = run_s2(s1_output_file)
+        if not s2_output_file:
+            return
 
-    return diff_str, added_lines, deleted_lines, ext
+        # 读取s1_XXX.txt并逐行运行s3.py
+        with open(s2_output_file, "r") as f, \
+            tqdm(total=100, desc=f'{s2_output_file} Progress', leave=False) as pbar:
 
+            for line in f:
+                pbar.update(1)
+                line = line.strip()
+                run_s3(line)
 
-def get_commit_logs(repo, start_time, end_time):
-    """
-    获取指定时间范围内的commit的所有diff
-
-    Args:
-        repo: 仓库对象
-        start_time: 开始时间
-        end_time: 结束时间
-
-    Returns:
-        指定时间范围内的commit的所有diff列表
-    """
-    commit_logs = []
-
-    # 获取指定时间范围内的所有commit
-    commits = get_commits_in_range(repo, start_time, end_time)
-    for commit in commits:
-        diffs = []
-
-        # 获取commit中所有的diff
-        for diff in commit.diff(create_patch=True):
-            # 获取diff的内容、添加行数、删除行数和文件扩展名
-            diff_content,addition_count,deletion_count,file_extension = get_diff_content(diff)
-            if diff_content is not None:
-                # 添加diff到列表
-                diffs.append({
-                    'addition_count': addition_count,
-                    'commit_subject': commit.message,
-                    'deletion_count': deletion_count,
-                    'file_extension':file_extension,
-                    'lang':get_file_language(file_extension),
-                    'repo_name':repo.remotes.origin.url,
-                    'diff_content': diff_content,
-                })
-
-        # 将commit的所有diff添加到commit_logs中
-        commit_logs.append(diffs)
-
-    return commit_logs
+        print(f"Execution completed for {file_path}")
 
 
-def main():
-    # 设置参数解析器
-    parser = argparse.ArgumentParser(description='Get commit logs between two dates from a git repository.')
-    parser.add_argument('repo_url', type=str, help='URL of the git repository')
-    parser.add_argument('--start', dest='start_time', type=str, default=(datetime.datetime.now() - datetime.timedelta(days=2)).strftime('%Y-%m-%dT%H:%M:%S'),
-                        help='start time in the format of "YYYY-MM-DDTHH:MM:SS" (default: 5 days ago)')
-    parser.add_argument('--end', dest='end_time', type=str, default=(datetime.datetime.now() + datetime.timedelta(days=1)).strftime('%Y-%m-%dT%H:%M:%S'),
-                        help='end time in the format of "YYYY-MM-DDTHH:MM:SS" (default: tomorrow)')
+def main(dir_path):
+    # 获取符合条件的文件路径
+    file_paths = []
+    for root, dirs, files in os.walk(dir_path):
+        for file in files:
+            if file.endswith(".jsonl"):
+                file_paths.append(os.path.join(root, file))
 
-    args = parser.parse_args()
-
-    repo = clone_or_pull_repo(args.repo_url)
-
-    commit_logs = get_commit_logs(repo, args.start_time, args.end_time)
-
-    print(json.dumps(commit_logs, indent=4))
+    # 循环执行
+    for file_path in tqdm(file_paths):
+        proc_one_file(file_path)
 
 
-if __name__ == '__main__':
-    main()
+if __name__ == "__main__":
+    if len(sys.argv) != 2:
+        print("Usage: python main.py path")
+        exit(1)
+
+    path = sys.argv[1]
+    if os.path.isdir(path):
+        main(path)
+    elif os.path.isfile(path):
+        proc_one_file(path)
+    else:
+        print("Error: Invalid path")
+        exit(1)
